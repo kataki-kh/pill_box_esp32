@@ -223,11 +223,13 @@ int print_wakeup_reason(int wakeup_reason){
 
   }
   ///check if we already reched all the bills
-  if(first_bill_index>(sizeof(first_bill.time)) and second_bill_index>(sizeof(second_bill.time))){
+  if((first_bill_index>(sizeof(first_bill.time)) and second_bill_index>(sizeof(second_bill.time)))
+  or (first_bill.time[first_bill_index]==0 and second_bill.time[second_bill_index]==0)){
     //something big or forever
     TIME_TO_SLEEP=604800;//sleep for a wake
   }
-  else if(first_bill_index>(sizeof(first_bill.time)) and second_bill_index<=(sizeof(second_bill.time))){
+  else if((first_bill_index>(sizeof(first_bill.time)) and second_bill_index<=(sizeof(second_bill.time)))
+  or (first_bill.time[first_bill_index]==0 and second_bill.time[second_bill_index]!=0)){
       Bill_TIME_TO_SLEEP=second_bill.time[first_bill_index];
    
     bill_caused_to_wakeup_room=2;
@@ -236,7 +238,8 @@ int print_wakeup_reason(int wakeup_reason){
         TIME_TO_SLEEP=Bill_TIME_TO_SLEEP-(((system_get_time()-325114)/1000000)-TIME_ON_BOOT)-previus_bill_time;
 
   }
-    else if(first_bill_index<=(sizeof(first_bill.time)) and second_bill_index>(sizeof(second_bill.time))){
+    else if((first_bill_index<=(sizeof(first_bill.time)) and second_bill_index>(sizeof(second_bill.time)))
+    or (first_bill.time[first_bill_index]!=0 and second_bill.time[second_bill_index]==0)){
  Bill_TIME_TO_SLEEP=first_bill.time[second_bill_index];
     bill_caused_to_wakeup_room=1;
     bill_caused_to_wakeup_douse=first_bill.douse;
@@ -294,23 +297,16 @@ void IRAM_ATTR MissedBill() {
 if(bill_caused_to_wakeup_room==3){
 
  
- remove_bill(1);
-  remove_bill(2);
-  //insert in the missed struct
-  
- // missed_bill.name[index]=missed_first_name;
- //  missed_bill.name[index+1]=missed_second_name;
- // missed_bill.douse[index]=missed_first_douse;
- // missed_bill.douse[index+1]=missed_first_douse;
+ remove_bill(1,1);
+  remove_bill(2,1);
+ 
 }else if(bill_caused_to_wakeup_room==1){
-   remove_bill(1);
-  // missed_bill.name[index]=missed_first_name;
-  // missed_bill.douse[index]=missed_first_douse;
+   remove_bill(1,1);
+ 
 }else if(bill_caused_to_wakeup_room==2){
 
-  remove_bill(2);
-    //missed_bill.name[index]=missed_second_name;
-//    missed_bill.douse[index]=missed_first_douse;
+  remove_bill(2,1);
+  
 }
  
  //reareanging the bill structures removing the first item in the array of time and deciding which alarm next room1 or room2 or both and set the sleep time and missed times and put the device to sleep
@@ -324,23 +320,24 @@ Last_Time_Up=(system_get_time()-325114)/1000000;
   esp_deep_sleep_start();
 }
 
-
-void remove_bill(int room){
+/// messed=1,0
+void remove_bill(int room,int messed){
   if(room==1){
-  /*  for(int i=0;i<sizeof(first_bill.time)/sizeof(first_bill.time[0]);i++){
-    first_bill.time[i]=first_bill.time[i+1];
-  }*/
-  first_bill.count=first_bill.count-first_bill.douse;
+  if(messed==1){
+    first_bill.count=first_bill.count-first_bill.douse;
+
+}
   first_bill_index+1;
     
   }else if(room==2){
-  /*  for(int i=0;i<sizeof(second_bill.time)/sizeof(second_bill.time[0]);i++){
-    second_bill.time[i]=second_bill.time[i+1];
-  }*/
-  second_bill.count=second_bill.count-first_bill.douse;
+ if(messed==1){
+  second_bill.count=second_bill.count-second_bill.douse;
+
+}
   second_bill_index+1;
   
 }
+
 
 }
 //the sync server is here
@@ -405,6 +402,7 @@ WiFi.softAP(ssid, password);
        myObject["missed_bill_time"] = missed_bill.time;
          myObject["missed_bill_douse"] = missed_bill.douse;
         myObject["missed_bill_name"] = missed_bill.name;
+        myObject["battery"] =battery;
         String jsonString = JSON.stringify(myObject);
      response=jsonString;
     }else{
@@ -438,8 +436,13 @@ WiFi.softAP(ssid, password);
       ///the array
       inputMessage =request->getParam(PARAM_INPUT_4)->value();
      JSONVar myArray = JSON.parse(inputMessage);
-      for(int i=0;i>myArray.length();i++){
-        first_bill.time[i]=(int) myArray[i];
+      for(int i=0;i<sizeof(first_bill.time);i++){
+        if(i<=myArray.length()){
+          first_bill.time[i]=(int) myArray[i];
+        }else{
+          first_bill.time[i]=0;
+        }
+     
         
       }
       ///add bills if any more
@@ -474,7 +477,13 @@ WiFi.softAP(ssid, password);
 
       JSONVar myArray = JSON.parse(inputMessage);
       for(int i=0;i>myArray.length();i++){
-        second_bill.time[i]=(int) myArray[i];
+
+         if(i<=myArray.length()){
+          second_bill.time[i]=(int) myArray[i];
+        }else{
+          second_bill.time[i]=0;
+        }
+       
       }
       ///add bills if any more
       ///add bills if any more
@@ -546,13 +555,13 @@ Receive_bill_timer = timerBegin(0, 80, true);                  //timer 0, div 80
      //servo_open_close_room
     if(bill_caused_to_wakeup_room==1 or bill_caused_to_wakeup_room==2){
       servo_open_close_room(bill_caused_to_wakeup_room,5000);//set to 5 seconds =5000
-     remove_bill(bill_caused_to_wakeup_room);
+     remove_bill(bill_caused_to_wakeup_room,0);
      set_next_alarm();
     }else if(bill_caused_to_wakeup_room==3){
       servo_open_close_room(1,5000);//set to 5 seconds =5000
-     remove_bill(1);
+     remove_bill(1,0);
      servo_open_close_room(2,5000);//set to 5 seconds =5000
-     remove_bill(2);
+     remove_bill(2,0);
      set_next_alarm();
     }
      
@@ -624,7 +633,7 @@ btStop();
    
  set_next_alarm();
    }else{
-    TIME_TO_SLEEP=604800;//sleep for a wake
+    TIME_TO_SLEEP=604800;//sleep for a week
    }
     Last_Time_Up=(system_get_time()-325114)/1000000;
 
